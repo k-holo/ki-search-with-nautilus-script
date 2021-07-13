@@ -1,0 +1,456 @@
+#!/usr/bin/env python3
+# -*- coding: UTF8 -*-
+"""
+CHERCHER_ICI
+je ne suis pas fan de la recherche avec Ctrl + F de nautilus...
+je me suis donc fait un script pour me simplifier les recherches
+sans avoir à passer en ligne de commande
+
+pour le moteur, j'ai finalement utilisé find dans un subprocess.Popen
+glob ou walk étant trop pénible à utiliser dans mon cas
+
+chercher_ici est un script prévu pour fonctionner en tant que nautilus script
+il est à placer dans le dossier :
+/home/USER/.local/share/nautilus/scripts
+soit :
+~/.local/share/nautilus/scripts
+
+il recherche des fichiers et des dossiers depuis un répertoire
+en choisissant un dossier ou un fichier
+
+la recherche se focalise sur le dernier niveau de l'arborescence
+que ce soit un fichier ou un dossier qui le soit
+
+rechercher machin trouvera
+/chemin/vers/machin
+ou 
+/chemin/vers/machin.ext
+
+mais pas 
+/chemin/vers/machin/truc
+ni
+/chemin/vers/machin/truc.ext
+
+les recherches se font sans distinction de casse
+
+si vous choisissez un dossier, la recherche se fera dans ce dossier
+si vous choisissez un fichier, la recherche se fera à partir du dossier contenant ce fichier
+
+le choix par défaut est contenant le motif de recherche, c'est à dire *recherche*
+les autres possibilités sont 
+    exact , c'est à dire recherche
+    commence par, c'est à dire recherche*
+    fini par, c'est à dire *recherche
+
+dans la fenêtre des éléments trouvés, seuls les noms sont marqués
+mais le chemin complet est indiqué si on clic sur un élément
+
+raccourcis clavier :
+ctrl + q ou touche échappe pour quitter
+double clic sur un élément pour ouvrir nautilus à l'emplacement du fichier ou du dossier
+
+pour l'utiliser, faites un clic droit sur un fichier ou un dossier
+allez dans le choix "Scripts"
+puis chercher_ici (ou un autre nom si vous avez changer le nom)
+le focus est sur le entry, tapez votre recherche
+tabulation permet de passer d'une option à une autre
+le choix entre recherche exacte, commence par, fini par et contient, 
+se fait avec la barre d'espace quand le focus est sur le choix avec la touche Tab
+quelque soit l'emplacement la touche Entrée valide la recherche
+
+après un clic sur un des éléments, un double clic sur celui ci 
+ou un clic sur le bouton voir ouvre le fichier ou le dossier en sélectionné dans nautilus
+
+"""
+
+
+__title__ = "Ki chercher fichiers ou dossiers"
+__author__ = 'Ury Cyril : kholo'
+__license__ = 'cc'
+__copyright__ = 'GPL 2021 07 13'
+__ver_major__ = 0
+__ver_minor__ = 8
+__ver_patch__ = 0
+__ver_sub__ = ''
+__version__ = "%d.%d.%d%s" % (__ver_major__, __ver_minor__,
+                              __ver_patch__, __ver_sub__)
+
+"""
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+"""
+
+
+import tkinter as tk
+import sys, getopt, os
+
+import re
+import fnmatch
+
+import subprocess
+import time
+
+# logs on or off
+__DEBUG__ = False
+# __DEBUG__ = True
+
+
+__lang__ = "FR"
+# __lang__ = "EN"
+
+locales = {
+
+    "myname":{"FR" : 'chercher_ici', "EN" : "find_here"},
+    "recherche exacte":{"FR" : 'recherche exacte', "EN" : "exacty"},
+    "commence par":{"FR" : 'commence par', "EN" : "begin with"},
+    "fini par":{"FR" : 'fini par', "EN" : "end with"},
+    "contient":{"FR" : 'contient', "EN" : "contains"},
+    "lancer":{"FR" : "lancer", "EN" : "initiate"},
+    "choisissez un élément":{"FR" : 'choisissez un élément', "EN" : "choose an element"},
+    "voir":{"FR" : 'aller à', "EN" : "go to"},
+    "WinShowElements_title":{"FR" : 'Ouvrir dossiers des résultats', "EN" : "results dir opener"},
+    # "xxxxx":{"FR" : 'xxxxxxx', "EN" : "xxxxxx"},
+}
+
+
+def localize(text):
+    """ localize texts"""
+    retour = text
+    try: retour = locales[text][__lang__]
+    except :
+        """ not traducted yet """ 
+        pass
+    return retour
+
+def log_rotate():
+    """ create uniq name for log file 
+    TODO : and path for it """
+    uniq = str(int(time.time()))
+
+    # log_file = "/tmp/out.log"
+    # log_file = "/dev/shm/chercher_ici.log"
+
+    # base = "/tmp/cherche_ici/"
+    base = "/dev/shm/"
+    return base + localize("myname") + "_" + uniq + ".log"
+log_file = log_rotate()
+
+def write_log(data, *others):
+    """ write log in /tmp or /dev/shm (RAM)
+    if shm file will lost on next reboot """
+    if __DEBUG__:
+        with open(log_file,'a') as f:
+            f.write(str(data) + '\n')
+            if len(others) > 0 :
+                f.write(str(others) + '\n')
+
+def finder(path: str, glob_pat: str, ignore_case: bool = False, is_recursive: bool = False):
+    """ search engine """
+    a_list = []
+    a_cmd = ["find", path, "-iname", glob_pat]
+    a_process = subprocess.Popen(a_cmd, stdout=subprocess.PIPE, universal_newlines=True)
+
+    """ search process """
+    # TODO add stop process if too long
+    while True:
+        output = a_process.stdout.readline()
+        if output == '' and a_process.poll() != None:
+            break
+        if output:
+            a_list.append(output.strip())
+            write_log("=>" + output.strip())
+
+    # TODO finir gestion des erreurs
+    # """ pour la gestion des erreurs """
+    # rc = a_process.poll() # TODO : utile ?
+    # output, errors = a_process.communicate()
+
+    return a_list
+
+def open_file(path):
+    """ open directory in Nautilus and select element """
+    # subprocess.Popen(["xdg-open", path])
+    subprocess.Popen(["nautilus", path])
+
+
+class MyListBox(tk.Listbox):
+    """ listbox with add, dump and select méthods """
+    def __init__(self, parent, *args, **kargs):
+        super().__init__(parent, *args, **kargs)
+        self.parent = parent
+
+        self.list_items = {} # elements list
+
+        # **************************************
+        self.selected = -1
+
+        self.bind('<Button-1>', self.select_element)
+        self.bind('<Double-1>', self.show_element_in_nautilus)
+
+    # **************************************
+    def show_element_in_nautilus(self, *event):
+        """ process to open element in nautilus """
+        write_log("I'm in listbox")
+        self.parent.parent.infosbar.show_element_in_nautilus()
+
+    def select_element(self, *event):
+        """ select an element in listbox """
+        write_log("I'm in listbox's select_element")
+        if isinstance(event, tuple):
+            event = event[0]
+        current = self.nearest(event.y)
+
+        if current != -1:
+            self.selected = current
+        else:
+            self.selected = -1
+
+        if self.selected != -1:
+            """ show full path in info bar """
+            self.parent.parent.infosbar.texte.set(self.list_items[self.selected]["realpath"])
+
+    def empty_listbox(self):
+        """ to empty listbox """
+        self.delete(0,tk.END)
+
+    # **************************************
+
+    def insert_element(self, place, media):
+        """ insert element in listbox to place gave """
+        nombre = len(self.get(0, tk.END))
+
+        if isinstance(place, int) :
+            if place <= nombre:
+                self.items[place] = {"label" : media.split('/')[-1], "realpath" : media}
+        else :
+            write_log("there " + str(nombre) + " element(s) in listbox")
+            self.list_items[nombre] = {"label" : media.split('/')[-1], "realpath" : media}
+        self.insert(place, media.split('/')[-1])
+
+    def insert_liste(self, place, liste):
+        """ insert list in listbox by element """
+        for element in liste:
+            self.insert_element(place, element)
+
+
+class ScrolledListBox(tk.Frame):
+    """ add scrolls H 'n V for listbox"""
+    def __init__(self, parent, a_list=[], *args, **kargs):
+        super().__init__(parent, *args, **kargs)
+        self.parent = parent
+
+        self.scrollbarV = tk.Scrollbar(self, orient='vertical')
+        self.scrollbarH = tk.Scrollbar(self, orient='horizontal')
+
+        self.listbox = MyListBox(self)
+        self.listbox.insert_liste(tk.END, a_list)
+
+        self.listbox.config(yscrollcommand = self.scrollbarV.set)
+        self.scrollbarV.config(command = self.listbox.yview)
+        self.listbox.config(xscrollcommand = self.scrollbarH.set)
+        self.scrollbarH.config(command = self.listbox.xview)
+
+        self.listbox.grid(row=0, column=0, sticky="news")
+        self.scrollbarV.grid(row=0, column=1, sticky="ns")
+        self.scrollbarH.grid(row=1, column=0, sticky="ew")
+
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+class ShowInfos(tk.Frame):
+    """ info bar to be in window """
+    def __init__(self, parent, *args, **kargs):
+        super().__init__(parent, *args, **kargs)
+        self.parent = parent
+        self.texte = tk.StringVar()
+        self.texte.set(localize("choisissez un élément"))
+        self.bouton = tk.Button(self, text=localize("voir"), command=self.show_element_in_nautilus)
+        self.bouton.grid(row=0, column=0, sticky='nws')
+        self.label = tk.Label(self, textvariable=self.texte, width=100)
+        self.label.grid(row=0, column=1, sticky='nws')
+
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_columnconfigure(1, weight=10)
+        self.grid_rowconfigure(0, weight=1)
+
+    def show_infos(self, a_texte):
+        """ shows text in info bar """
+        write_log("show_infos in ShowInfos", a_texte)
+        self.texte.set(a_texte)
+
+    def show_element_in_nautilus(self):
+        """ open nautilus and select the file """
+        a_place = self.parent.listbox.listbox.selected
+        a_file = self.parent.listbox.listbox.list_items[a_place]
+        a_path = a_file["realpath"]
+        open_file(a_path)
+
+class WinShowElements(tk.Toplevel):
+    """ window to show elements dirs or files in listbox """
+    def __init__(self, parent=None, liste=[], *args, **kargs):
+        super().__init__(parent, *args, **kargs)
+        self.parent = parent
+        self.geometry("1000x450+100+300")
+        self.title(localize("WinShowElements_title"))
+        self.listbox = ScrolledListBox(self, liste)
+        self.listbox.grid(row=0, column=0, sticky='news')
+
+        self.infosbar = ShowInfos(self)
+        self.infosbar.grid(row=1, column=0, sticky='news', columnspan=2)
+
+        # ******************************
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        # self.grid_rowconfigure(1, weight=1)
+        # self.grid_rowconfigure(2, weight=1)
+
+        self.bind('<Control-q>', self.exit_window)
+        self.bind('<Escape>', self.exit_window)
+
+        """ to save config when clic on exit button 
+        shunt close process to add another """
+        self.protocol("WM_DELETE_WINDOW", self.close_window)
+        # TODO save prefs
+
+        self.mainloop()
+
+    # ******************************
+    """ two methods in different cases of close """
+    ## may be useless...
+    def close_window(self, *event):
+        """ process to close with config save """
+        # TODO : add config save
+        self.quit() 
+    def exit_window(self, *event):
+        """ to close and lunch close_window"""
+        self.close_window()
+
+class WinChoice(tk.Tk):
+    """ window to choice search's motif and search's type """
+    def __init__(self, parent=None, *args, **kargs):
+        super().__init__(parent, *args, **kargs)
+        self.parent = parent
+        self.geometry("500x300+100+300")
+
+        # ******************************
+        self.choice = "*" # par défaut : tout !
+        self.recherche = tk.StringVar()
+        self.entry = tk.Entry(self, textvariable=self.recherche)
+        self.entry.grid(row=0, column=0, sticky="ew")
+
+        self.frame_choix = tk.Frame(self)
+        self.frame_choix.grid(row=1, column=0, sticky='news')
+        vals = ['A', 'B', 'C', 'D']
+        etiqs = [localize('recherche exacte'), localize('commence par'), localize('fini par'), localize('contient')]
+        self.varGr = tk.StringVar()
+        self.varGr.set(vals[3]) # choice search type by default : contains
+        for i in range(4):
+            b = tk.Radiobutton(self.frame_choix, variable=self.varGr, text=etiqs[i], value=vals[i])
+            b.grid(row=i, column=0, sticky="nw")
+
+        self.btn_lancer = tk.Button(self, text=localize("lancer"), command=self.run_search)
+        self.btn_lancer.grid(row=2, column=0)
+
+        self.entry.focus_set() # focus on entry by default
+
+        # ******************************
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(2, weight=1)
+
+        self.bind('<Control-q>', self.exit_window)
+        self.bind('<Return>', self.run_search)
+        self.bind('<Escape>', self.exit_window)
+
+        """ to save config when clic on exit button 
+        shunt close process to add another """
+        self.protocol("WM_DELETE_WINDOW", self.close_window)
+        # TODO save prefs
+
+        self.mainloop()
+
+    # ******************************
+    # def __str__(self):
+        # return self.choice
+
+    def run_search(self, *event):
+        """ create search pattern """
+        self.choice = '*'
+        entry = self.recherche.get()
+        button = self.varGr.get()
+        if entry == "":
+            self.choice = '*'
+        elif button == 'A': # 'search exacty'
+            self.choice = entry
+        elif button == 'B': # 'begin with'
+            if not '*' in entry:
+                self.choice = entry + '*'
+            else :
+                self.choice = entry
+        elif button == 'C': # 'ends with'
+            if not '*' in entry:
+                self.choice = '*' + entry
+            else :
+                self.choice = entry
+        elif button == 'D': # 'is in'
+            if not '*' in entry:
+                self.choice = '*' + entry + '*'
+            else :
+                self.choice = entry
+
+        self.withdraw() # hide window when open toplevel window
+        self.exit_window()
+
+    # ******************************
+    def close_window(self, *event):
+        """ process to close with config save """
+        # TODO : add config save
+        self.quit() 
+    def exit_window(self, *event):
+        """ to close and lunch close_window"""
+        self.close_window()
+
+
+# *************************************************************
+write_log(30*'-')
+write_log(time.time())
+
+write_log("in part A")
+
+current_dir = os.getcwd()
+arguments = [current_dir + '/' + x for x in sys.argv[1:] if os.path.isdir(current_dir + '/' + x)]
+
+write_log("current dir is " + current_dir + '\n')
+write_log("argus are " + str(arguments) + '\n')
+
+if len(arguments) == 0:
+    arguments = [current_dir]
+write_log("argus normalized : ", arguments)
+
+win_option_choice = WinChoice()
+write_log("choice is", win_option_choice.choice)
+
+# *************************************************************
+write_log("in part B")
+
+# in futur, may be add multi search words
+for a_argu in arguments:
+    finded_files = finder(a_argu, win_option_choice.choice, True, True)
+
+write_log(20*'+')
+write_log("in show part")
+
+""" show results window to find and open them in Nautilus """
+WinShowElements(liste=finded_files)
