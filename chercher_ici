@@ -1,75 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: UTF8 -*-
 """
-CHERCHER_ICI
-je ne suis pas fan de la recherche avec Ctrl + F de nautilus...
-je me suis donc fait un script pour me simplifier les recherches
-sans avoir à passer en ligne de commande
+https://github.com/k-holo/ki-search-with-nautilus-script
 
-pour le moteur, j'ai finalement utilisé find dans un subprocess.Popen
-glob ou walk étant trop pénible à utiliser dans mon cas
+nautilus script to search files or directories with 
+exacty, begin with, ends with or contains patern
+simple open results in nautilus
 
-chercher_ici est un script prévu pour fonctionner en tant que nautilus script
-il est à placer dans le dossier :
-/home/USER/.local/share/nautilus/scripts
-soit :
-~/.local/share/nautilus/scripts
-
-il recherche des fichiers et des dossiers depuis un répertoire
-en choisissant un dossier ou un fichier
-
-la recherche se focalise sur le dernier niveau de l'arborescence
-que ce soit un fichier ou un dossier qui le soit
-
-rechercher machin trouvera
-/chemin/vers/machin
-ou 
-/chemin/vers/machin.ext
-
-mais pas 
-/chemin/vers/machin/truc
-ni
-/chemin/vers/machin/truc.ext
-
-les recherches se font sans distinction de casse
-
-si vous choisissez un dossier, la recherche se fera dans ce dossier
-si vous choisissez un fichier, la recherche se fera à partir du dossier contenant ce fichier
-
-le choix par défaut est contenant le motif de recherche, c'est à dire *recherche*
-les autres possibilités sont 
-    exact , c'est à dire recherche
-    commence par, c'est à dire recherche*
-    fini par, c'est à dire *recherche
-
-dans la fenêtre des éléments trouvés, seuls les noms sont marqués
-mais le chemin complet est indiqué si on clic sur un élément
-
-raccourcis clavier :
-ctrl + q ou touche échappe pour quitter
-double clic sur un élément pour ouvrir nautilus à l'emplacement du fichier ou du dossier
-
-pour l'utiliser, faites un clic droit sur un fichier ou un dossier
-allez dans le choix "Scripts"
-puis chercher_ici (ou un autre nom si vous avez changer le nom)
-le focus est sur le entry, tapez votre recherche
-tabulation permet de passer d'une option à une autre
-le choix entre recherche exacte, commence par, fini par et contient, 
-se fait avec la barre d'espace quand le focus est sur le choix avec la touche Tab
-quelque soit l'emplacement la touche Entrée valide la recherche
-
-après un clic sur un des éléments, un double clic sur celui ci 
-ou un clic sur le bouton voir ouvre le fichier ou le dossier en sélectionné dans nautilus
+a lot of thanks for Vobul user of french Ubuntu Forum ;°)
 
 """
 
 
 __title__ = "Ki chercher fichiers ou dossiers"
 __author__ = 'Ury Cyril : kholo'
-__license__ = 'cc'
-__copyright__ = 'GPL 2021 07 13'
+__license__ = 'GNU'
+__copyright__ = 'GNU 2021 07 14'
 __ver_major__ = 0
-__ver_minor__ = 8
+__ver_minor__ = 9
 __ver_patch__ = 0
 __ver_sub__ = ''
 __version__ = "%d.%d.%d%s" % (__ver_major__, __ver_minor__,
@@ -101,13 +49,15 @@ import fnmatch
 import subprocess
 import time
 
+# from pathlib import Path # TODO
+
 # logs on or off
-__DEBUG__ = False
-# __DEBUG__ = True
+DEBUG = False
+# DEBUG = True
 
 
-__lang__ = "FR"
-# __lang__ = "EN"
+LANG = "FR"
+# LANG = "EN"
 
 locales = {
 
@@ -126,31 +76,34 @@ locales = {
 
 def localize(text):
     """ localize texts"""
-    retour = text
-    try: retour = locales[text][__lang__]
+    # TODO : voir gettext
+    # https://docs.python.org/fr/3/library/gettext.html
+    translated_text = text
+    try: translated_text = locales[text][LANG]
     except :
-        """ not traducted yet """ 
+        """ not translated yet """ 
         pass
-    return retour
+    return translated_text
 
 def log_rotate():
     """ create uniq name for log file 
     TODO : and path for it """
     uniq = str(int(time.time()))
 
-    # log_file = "/tmp/out.log"
-    # log_file = "/dev/shm/chercher_ici.log"
+    # LOGFILE_PATH = "/tmp/out.log"
+    # LOGFILE_PATH = "/dev/shm/chercher_ici.log"
 
     # base = "/tmp/cherche_ici/"
     base = "/dev/shm/"
     return base + localize("myname") + "_" + uniq + ".log"
-log_file = log_rotate()
+
+LOGFILE_PATH = log_rotate()
 
 def write_log(data, *others):
     """ write log in /tmp or /dev/shm (RAM)
     if shm file will lost on next reboot """
-    if __DEBUG__:
-        with open(log_file,'a') as f:
+    if DEBUG:
+        with open(LOGFILE_PATH,'a') as f:
             f.write(str(data) + '\n')
             if len(others) > 0 :
                 f.write(str(others) + '\n')
@@ -180,7 +133,7 @@ def finder(path: str, glob_pat: str, ignore_case: bool = False, is_recursive: bo
 
 def open_file(path):
     """ open directory in Nautilus and select element """
-    # subprocess.Popen(["xdg-open", path])
+    # subprocess.Popen(["xdg-open", path]) # ouvre l'app par défaut
     subprocess.Popen(["nautilus", path])
 
 
@@ -392,7 +345,7 @@ class WinChoice(tk.Tk):
         button = self.varGr.get()
         if entry == "":
             self.choice = '*'
-        elif button == 'A': # 'search exacty'
+        elif button == 'A': # 'search exactly'
             self.choice = entry
         elif button == 'B': # 'begin with'
             if not '*' in entry:
